@@ -205,3 +205,51 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# --- ML data & model artifacts (keep code repo lean) ---
+data/
+datasets/
+models/
+checkpoints/
+outputs/
+results/
+runs/
+logs/
+nohup.out
+*.log
+*.out
+*.err
+
+# Large/binary scientific files (don’t version-control)
+*.csv
+*.tsv
+*.parquet
+*.h5
+*.h5ad
+*.hdf5
+*.npz
+*.npy
+*.pkl
+*.joblib
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.safetensors
+
+# Experiment trackers / frameworks
+wandb/
+mlruns/
+lightning_logs/
+ray_results/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Optional: editor project settings (uncomment if you don’t want to share them)
+#.vscode/
+#.idea/
+
+# Optional: Jupyter exports
+*.nbconvert.ipynb
