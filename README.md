@@ -28,7 +28,7 @@ Additionally for this to work, every directory in src/ needs an '__init__.py' fi
 - git pull : pull changes from remote repo to local repo
 - git add "...": add files to be commited
 - git commit -m "...": commit changes with a messages describing them (don't commit to much at once so version history stays tracable)
-- git push : push local changes to remote repo
+- git push : push local changes to remote repo (always pull once before pushing)
 
 ### branches and merges
 to be added later
