@@ -9,14 +9,14 @@ description = "University of Hamburg team for the Virtual Cell Challenge"
 authors = [
   { name = "Danisch Khurshid", email = "danisch.khurshid@stud.uke.uni-hamburg.de" },
   { name = "Mikko Kormann", email = "mikko.kormann@uni-hamburg.de" },
-  { name = "Berenike Rutz", email = "berenike.rutz@studium.uni-hamburg.de"},
-  { name = "Viktor Alexander Gunnar Johannes Zouboulis", email = "viktor.zouboulis@stud.uke.uni-hamburg.de"}
+  { name = "Berenike Rutz", email = "berenike.rutz@studium.uni-hamburg.de" },
+  { name = "Viktor Alexander Gunnar Johannes Zouboulis", email = "viktor.zouboulis@stud.uke.uni-hamburg.de" }
 ]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "numpy",
-  "scipy"
+  "scipy",
   "pandas",
   "torch",
 ]
