@@ -207,7 +207,8 @@ marimo/_lsp/
 __marimo__/
 
 # --- ML data & model artifacts (keep code repo lean) ---
-data/
+data/*
+!data/README.md
 datasets/
 models/
 checkpoints/
