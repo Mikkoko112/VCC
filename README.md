@@ -6,7 +6,7 @@ quick tutorial on setting up a local work enviroment for this project
 
 ### git
 1. make new local directory at desired location and navigate to it
-2. make local copy of this remote repo with 'git clone "https://github.com/Mikkoko112/VCC.git"
+2. make local copy of this remote repo with 'git clone "https://github.com/Mikkoko112/VCC.git"'
 3. navigate to /VCC with 'cd VCC' (local directory and the local copy shouldn't have the same name, e.g. .VCC/VCC/ is bad)
 
 ### venv and python package
@@ -20,14 +20,14 @@ quick tutorial on setting up a local work enviroment for this project
 9. 'python -m ipykernel install --user --name vcc-uhh --display-name "Python (vcc-uhh)"'
 
 Now you can import classes and functions across files and directories in src/ with 'from vcc-uhh import ...'
-Additionally for this to work, every directory in src/ needs an '__init__.py' file (this can be empty)
+Additionally for this to work, every directory in src/ needs an '\_\_init\_\_.py' file (this can be empty)
 
 ## Maintenance
 ### basic git
 - git status : see all files that have changed/are staged for a commit. Additionally see if you are behind remote repo
 - git pull : pull changes from remote repo to local repo
-- git add "...": add files to be commited
-- git commit -m "...": commit changes with a messages describing them (don't commit to much at once so version history stays tracable)
+- git add "...": add files to be commited (don't add too many files per commit so version history stays tracable)
+- git commit -m "...": commit changes with a messages describing them 
 - git push : push local changes to remote repo (always pull once before pushing)
 
 ### branches and merges
