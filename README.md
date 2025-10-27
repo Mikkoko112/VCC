@@ -23,6 +23,16 @@ Now you can import classes and functions across files and directories in src/ wi
 Additionally for this to work, every directory in src/ needs an '__init__.py' file (this can be empty)
 
 ## Maintenance
+### basic git
+- git status : see all files that have changed/are staged for a commit. Additionally see if you are behind remote repo
+- git pull : pull changes from remote repo to local repo
+- git add "...": add files to be commited
+- git commit -m "...": commit changes with a messages describing them (don't commit to much at once so version history stays tracable)
+- git push : push local changes to remote repo
+
+### branches and merges
+to be added later
+
 ### Adding dependencies
 Whenever you use a new package, add it to the pyproject.toml file and reinstall the local package like in step 7 of the setup
 (Since the -e flag makes the package editable, you don't need to reinstall the package every time you change the codebase)
