@@ -1,1 +1,2 @@
-This folder is kept intentionally empty for version control, fetch the data from sharecloud
+This folder is kept intentionally empty in remote repo for version control.
+Fetch the data from the VCC challenge website at https://virtualcellchallenge.org/app
