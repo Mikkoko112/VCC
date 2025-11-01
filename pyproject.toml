@@ -19,6 +19,7 @@ dependencies = [
   "scipy",
   "pandas",
   "torch",
+  "cell-eval"
 ]
 
 [tool.setuptools.packages.find]
