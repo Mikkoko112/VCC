@@ -13,13 +13,13 @@ authors = [
   { name = "Viktor Alexander Gunnar Johannes Zouboulis", email = "viktor.zouboulis@stud.uke.uni-hamburg.de" }
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 dependencies = [
   "numpy",
   "scipy",
   "pandas",
   "torch",
-  "cell-eval"
+  "cell-eval >=0.6,<0.7"
 ]
 
 [tool.setuptools.packages.find]
