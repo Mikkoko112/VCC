@@ -19,6 +19,7 @@ dependencies = [
   "scipy",
   "pandas",
   "torch",
+  "anndata",
   "cell-eval >=0.6,<0.7"
 ]
 
