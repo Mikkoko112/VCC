@@ -114,6 +114,9 @@ model.to(mps_device)
 plot_dir = Path(__file__).parent / "figures" / f"{layer_tag}"
 plot_dir.mkdir(parents=True, exist_ok=True)
 
+print("start training")
+import time
+start = time.time()
 for epoch in range(epochs):
     for batch in dataloader:
         pbatch = batch.X
@@ -132,6 +135,8 @@ for epoch in range(epochs):
     
     outputs.append((epoch, batch, reconstructed))
     print(f"Epoch {epoch+1}/{epochs}, Loss: {loss.item():.6f}")
+end = time.time()
+print(f"Training took {end-start}s")
 
 # Plot the global training loss
 plt.style.use('fivethirtyeight')
