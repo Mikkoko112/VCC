@@ -1,0 +1,58 @@
+{
+  "experiment_id": "bfb60f90",
+  "timestamp": "2026-03-31T18:42:47.426555",
+  "model_architecture": {
+    "ae_encoder_layers": [
+      3000,
+      512,
+      256,
+      128,
+      32
+    ],
+    "ae_decoder_layers": [
+      32,
+      128,
+      256,
+      512,
+      3000
+    ],
+    "transformer_num_heads": 4,
+    "transformer_num_layers": 2,
+    "transformer_ff_dim": 128,
+    "activation": "LeakyReLU(0.2)",
+    "dropout": 0.1,
+    "output_activation": "Softplus",
+    "latent_dim": 32,
+    "global_dispersion": false
+  },
+  "hyperparameters": {
+    "learning_rate": 0.0001,
+    "weight_decay": 1e-06,
+    "batch_size": 128,
+    "epochs": 50,
+    "loss_type": "mse",
+    "dispersion_scheme": "None"
+  },
+  "preprocessing": {
+    "counts_mode": "raw counts",
+    "log1p": false,
+    "normalization": false,
+    "highly_variable_genes": false,
+    "hvg_gene_count": 3000
+  },
+  "split_strategy": {
+    "train_fraction": 0.8,
+    "validation_fraction": 0.1,
+    "test_fraction": 0.1
+  },
+  "seeds": {
+    "python": 42,
+    "numpy": 42,
+    "torch": 42,
+    "cuda": null
+  },
+  "raw_data_source": {
+    "perturbed_h5ad_path": "/Users/nike/Documents/Uni/Master/dieVirtuelleZelle/vcc_data/adata_Training.h5ad",
+    "perturbed_h5ad_checksum": "a09977104fefb622368ca74b50c9d3c1e891733e6c83db07acfca49b0219c02b"
+  }
+}

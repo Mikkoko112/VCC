@@ -1,0 +1,12 @@
+{
+  "raw_file_path": "/Users/nike/Documents/Uni/Master/dieVirtuelleZelle/VCC/test/Nike/pbmc_data/pbmc68k/adata_hvg.h5ad",
+  "raw_file_checksum": "3760e69079fcc7a21b8de93871438a7b9454fdfa72de0861ff9ef4568ee8f74d",
+  "adata_obs_shape": [
+    68579,
+    2
+  ],
+  "adata_var_shape": [
+    3000,
+    6
+  ]
+}

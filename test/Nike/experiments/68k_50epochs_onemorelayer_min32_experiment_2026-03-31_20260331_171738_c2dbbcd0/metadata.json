@@ -1,0 +1,76 @@
+{
+  "experiment_id": "c2dbbcd0",
+  "timestamp": "2026-03-31T17:17:39.317710",
+  "model_architecture": {
+    "encoder_layers": [
+      3000,
+      512,
+      256,
+      32
+    ],
+    "decoder_layers": [
+      32,
+      256,
+      512,
+      3000
+    ],
+    "activation": "LeakyReLU(0.2)",
+    "dropout": 0.1,
+    "output_activation": "Softplus",
+    "latent_dim": 32,
+    "global_dispersion": true
+  },
+  "hyperparameters": {
+    "learning_rate": 0.001,
+    "weight_decay": 1e-08,
+    "batch_size": 128,
+    "epochs": 20,
+    "loss_type": "negative_binomial",
+    "dispersion_scheme": "gene-wise global dispersion"
+  },
+  "preprocessing": {
+    "counts_mode": "raw counts",
+    "log1p": false,
+    "normalization": false,
+    "highly_variable_genes": true,
+    "n_genes": 3000
+  },
+  "split_strategy": {
+    "train_fraction": 0.8,
+    "validation_fraction": 0.1,
+    "test_fraction": 0.1
+  },
+  "seeds": {
+    "python": 42,
+    "numpy": 42,
+    "torch": 42,
+    "cuda": null
+  },
+  "raw_data_source": {
+    "file_path": "/Users/nike/Documents/Uni/Master/dieVirtuelleZelle/VCC/test/Nike/pbmc_data/pbmc68k/adata_hvg.h5ad",
+    "file_checksum": "3760e69079fcc7a21b8de93871438a7b9454fdfa72de0861ff9ef4568ee8f74d"
+  },
+  "package_versions": {
+    "python": "3.14.3",
+    "torch": "2.11.0",
+    "scanpy": "1.11.5",
+    "anndata": "0.12.10",
+    "numpy": "2.4.3",
+    "pandas": "2.3.3",
+    "packages": {
+      "torch": "2.11.0",
+      "scanpy": "1.11.5",
+      "anndata": "0.12.10",
+      "numpy": "2.4.3",
+      "pandas": "2.3.3"
+    }
+  },
+  "runtime": {
+    "device": "cpu",
+    "cuda_available": false,
+    "cuda_version": null,
+    "cudnn_version": null,
+    "python_executable": "/opt/miniconda3/envs/VCC/bin/python3",
+    "platform": "macOS-15.7.4-arm64-arm-64bit-Mach-O"
+  }
+}

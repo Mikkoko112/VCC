@@ -1,0 +1,12 @@
+{
+  "final_train_loss": 209.0372117760576,
+  "final_validation_loss": 229.80405849880643,
+  "final_test_loss": 229.4996908682364,
+  "final_avg_negative_log_likelihood": 213.16026306152344,
+  "mse": 0.1220160573720932,
+  "mae": 0.048133570700883865,
+  "rmse": 0.34930798411369324,
+  "nb_deviance": 0.06443130224943161,
+  "num_cells": 68579,
+  "num_genes": 3000
+}

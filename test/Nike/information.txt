@@ -1,0 +1,106 @@
+Analyzing influences of perturbations of genes for gene expressions overall.
+
+# Preprocessing the data:
+in prepare_rawpbmc.py local 10x PBMC raw count matrices will be changed so that
+it is a h5ad format, needed for autoencoder.py
+
+Training the Autoencoder (AE) on not perturbated (baseline) data first!
+Then use it as a fixed representation for training the Transformer to predict 
+the perturbation effects. 
+    -> see autoencoder.py
+
+Also possible to fine tune the AE or train a conditional AE with perturbation 
+supervision to improve the accuracy -> if we have lots of labeled perturbation pairs
+    -> not yet done
+
+# Autoencoder for scRNA data:
+bottleneck size: 
+- not 2, because we have approx. 3k genes and it will compress TOO much
+- typical scRNA latent dims: 10-50 (look up paper)
+    so try with 16-128 depending on complexity
+    -> used 32 as bottleneck in autoencoder.py
+
+layers:
+- to stabilize use layer normalization between Linear and Activation functions 
+- avoid dead neurons so use ELU or LeakyReLU
+- use dropout (p=0.1-0.3) for encoder/decoder for robustness
+    -> all three things done in autoencoder.py
+
+decoder:
+- decoder output: raw values and parameterize appropriate likelihood -> Softplus on predicted mean
+    -> used Softplus in autoencoder.py
+
+Regularization:  (not done in autoencoder.py)
+- Kullback-Leibler (KL) term -> Variational Autoencoder (VAE) for generative tasks (scVI)
+    -> i dont know if we want it for getting more data... as long as we have enough data from internet maybe not 
+- add contractive/denoising objectives so latent space focuses on robust features
+    - like adding Gaussian noise or mask genes during training
+
+
+# Downstream usage with Transformer: (suggested by GPT 5 mini)
+- Option A (recommended): Train AE → freeze encoder. Train Transformer to take 
+encoder(x_baseline) plus a perturbation token/embedding (e.g., one-hot gene 
+perturbation or learned embedding per gene/perturbation) and predict 
+encoder(x_perturbed). Decode predicted latent with AE.decoder to get expression.
+
+- Option B: Train Transformer to predict delta in latent space: 
+latent_perturbed = latent_baseline + Transformer(latent_baseline, perturbation).
+
+- Option C: Train Transformer to predict gene-wise effect directly on expression; 
+use AE to denoise inputs but keep training objective in expression space.
+Use per-perturbation embeddings (learnable vectors), and possibly a sparse input 
+indicating which gene(s) are perturbed.
+
+=> for train_transformer_from_ae.py used model from data 68k pbmc https://www.10xgenomics.com/datasets/fresh-68-k-pbm-cs-donor-a-1-standard-1-1-0 
+    which model? 68k_50epochs_onemorelayer_min32 epoch number 22 
+        because after that loss of validation set increased! #early stopping
+
+
+# AE loss in autoencoder.py described by ChatGPT-5 mini:
+Your loss magnitudes are large because your negative-binomial loss is a summed 
+negative log-likelihood across genes (features) and then averaged over batch rows, 
+so values scale with number of genes per cell. Points and quick checks/fixes:
+
+What your loss computes
+negative_binomial_log_prob returns per-element log-probabilities (shape: [batch, genes]).
+negative_binomial_loss does -(log_prob.sum(dim=1)).mean() → you sum over genes, 
+then average over cells. So loss ≈ average negative log-likelihood per cell (not per gene). 
+For cdims ≈ 3k, per-cell NLL of ~900–1000 is plausible.
+
+Make the number interpretable
+Per-element (per gene) NLL: loss_per_gene = loss_value / cdims
+Per-count average: loss_per_count = loss_value / (cdims * batch_size) if you want 
+per-element across whole batch.
+Example: for cdims=3000 and reported loss ≈ 900 → per-gene ≈ 0.3 nats (or 0.43 in bits).
+
+Verify sign/scale and baselines
+Compute NLL for trivial baselines to ensure model improves:
+mu = counts (saturated) → should give very small/zero NLL per cell when using mu_sat 
+in your deviance code.
+mu = counts.mean(dim=0).unsqueeze(0) (gene-wise mean) → baseline loss to compare.
+If your model's loss decreases over epochs, training is working regardless of large 
+absolute numbers.
+
+Numerical/parameter checks that can inflate loss
+Dispersion magnitude: huge/small theta can change likelihood scale. Inspect 
+model.get_dispersion().mean()/min/max.
+Decoder outputs: you apply Softplus, so mu>=0; good. Ensure mu scale matches 
+counts (no unintended scaling).
+Epsilon/clamping: you clamp mu and theta; ensure eps isn't too large.
+Data: confirm adata.X contains raw counts (integers) and not already 
+log-transformed or normalized.
+
+Suggested diagnostics (run a few quickly)
+Print shapes and a few stats during evaluation: print(batch.X.shape, 
+reconstructed.shape, dispersion.shape) print('loss_batch_sum, loss_per_gene, 
+loss_per_cell:', loss.item(), loss.item()/cdims, loss.item()/batch_size)
+Baseline losses: mu_mean = full_counts.mean(dim=0, keepdim=True) 
+baseline_loss = negative_binomial_loss(full_counts, mu_mean.expand_as(full_counts), dispersion)
+Check dispersion: d = model.get_dispersion(); print(d.min().item(), d.mean().item(), d.max().item())
+If you want per-gene reported loss in your pipeline, change negative_binomial_loss 
+to return per-element mean:
+return -(log_prob).mean()
+
+Summary: 900–1000 is not inherently bad — it's the average negative log-likelihood 
+per cell summed over ~3k genes. Convert to per-gene or compare against baselines and 
+training trends to judge performance.

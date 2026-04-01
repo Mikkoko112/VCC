@@ -1,0 +1,10 @@
+{
+  "python_version": "3.14.3",
+  "sys_executable": "/opt/miniconda3/envs/VCC/bin/python3",
+  "platform": "macOS-15.7.4-arm64-arm-64bit-Mach-O",
+  "cpu": "arm",
+  "device": "cpu",
+  "cuda_available": false,
+  "cuda_version": null,
+  "cudnn_version": null
+}
