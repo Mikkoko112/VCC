@@ -64,7 +64,7 @@ else:
     print(f"Using device: {mps_device}")
 
 # TODO: Read the .h5ad file using Scanpy
-file_path = "/Users/nike/Documents/Uni/Master/dieVirtuelleZelle/VCC/test/Nike/pbmc_data/pbmc68k/adata_hvg.h5ad"
+file_path = "/Users/nike/Documents/Uni/Master/dieVirtuelleZelle/VCC/test/Nike/pbmc_data/Suco_PBMC_1.3/PBMC-X-BRCA-X-scRNAseq-X-2021-X-Zhang-X-10.1016_j.ccell.2021.09.010.h5ad"
 adata = sc.read_h5ad(file_path)
 
 # Make sure to reset the core matrix to raw counts
@@ -74,16 +74,23 @@ adata = sc.read_h5ad(file_path)
 #adata.X = adata.raw.X.copy()   # keep raw counts in X for NB likelihood training
 
 # make an AnnData that contains raw counts and then select HVGs on it
-adata_full = adata.raw.to_adata().copy()   # full counts AnnData
-# TODO: Subset the Anndata object to the top 3000 highly variable genes
-sc.pp.highly_variable_genes(adata_full, n_top_genes=3000, flavor="seurat_v3", subset=True, inplace=True)
-adata = adata_full  # now adata.X contains counts for the HVGs
+if adata.raw is not None:
+    adata = adata.raw.to_adata().copy() # full counts AnnData
+else:
+    print("No raw data stored in this AnnData object")
+    # Use the current adata instead
+    adata = adata.copy()  
+# Subset the Anndata object to the top 3000 highly variable genes
+# sc.pp.highly_variable_genes(adata_full, n_top_genes=3000, flavor="seurat_v3", subset=True, inplace=True)
+# adata = adata_full  # now adata.X contains counts for the HVGs
 
 # Keep raw counts in X for negative binomial training and avoid log1p transformations
 # sc.pp.normalize_total(adata, target_sum=1e6, inplace=True)
 # sc.pp.log1p(adata)
 
-## reproducibility and experiment tracking setup
+#######################################################################
+######## reproducibility and experiment tracking setup ################
+#######################################################################
 def compute_sha256(file_path):
     try:
         hasher = hashlib.sha256()
@@ -170,7 +177,9 @@ cell_metadata.to_csv(experiment_dir / 'cell_metadata.csv', index=True)
 
 pd.DataFrame({'gene': adata.var_names}).to_csv(experiment_dir / 'gene_list.csv', index=False)
 
-# Train/validation/test AnnLoaders.
+#######################################################################
+################# Train/validation/test AnnLoaders. ###################
+#######################################################################
 train_adata = adata[train_idx].copy()
 val_adata = adata[val_idx].copy()
 test_adata = adata[test_idx].copy()
@@ -197,10 +206,10 @@ class SCAutoEncoder(nn.Module):
             nn.Linear(512, 256),
             nn.LayerNorm(256),
             nn.LeakyReLU(0.2),
-            nn.Dropout(0.1), #
-            nn.Linear(256, 128), #
-            nn.LayerNorm(128), #
-            nn.LeakyReLU(0.2),#
+            nn.Dropout(0.1), 
+            nn.Linear(256, 128), 
+            nn.LayerNorm(128), 
+            nn.LeakyReLU(0.2),
             nn.Linear(128, latent_dim)
         )
         self.decoder = nn.Sequential(

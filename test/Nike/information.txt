@@ -4,6 +4,10 @@ Analyzing influences of perturbations of genes for gene expressions overall.
 in prepare_rawpbmc.py local 10x PBMC raw count matrices will be changed so that
 it is a h5ad format, needed for autoencoder.py
 
+OR better use https://zenodo.org/records/20113753 
+Suco - PBMC for a standarized dataset inlcuding >500 individuals and >5 millions cells
+for training AI !!!!
+
 Training the Autoencoder (AE) on not perturbated (baseline) data first!
 Then use it as a fixed representation for training the Transformer to predict 
 the perturbation effects. 
@@ -16,9 +20,16 @@ supervision to improve the accuracy -> if we have lots of labeled perturbation p
 # Autoencoder for scRNA data:
 bottleneck size: 
 - not 2, because we have approx. 3k genes and it will compress TOO much
-- typical scRNA latent dims: 10-50 (look up paper)
+- typical scRNA latent dims: 10-50 (look up paper -> see Mohamad Kassab et al., 2026)
     so try with 16-128 depending on complexity
     -> used 32 as bottleneck in autoencoder.py
+
+    However, Mohamad Kassab et al., 2026, which systematically benchmarked 
+    VAE-based methods (scVI, MrVI, LDVAE) across four datasets with 120 
+    different configurations, found that “moderate-to-high latent dimensionality (>30) 
+    often gives the best balance” between batch correction and biological conservation. 
+    Sensitivity to latent size was dataset-dependent, with larger latents improving 
+    batch mixing but sometimes reducing biological conservation.
 
 layers:
 - to stabilize use layer normalization between Linear and Activation functions 
