@@ -48,6 +48,17 @@ Regularization:  (not done in autoencoder.py)
     - like adding Gaussian noise or mask genes during training
 
 
+using the HVG selection (n_top_genes=5000) 
+
+Quick results:
+Cells: 1,916,134
+Genes after HVG: 5,000
+Dense matrix (float32): ~38.32 GB
+Model params: ~2.09 GB
+Estimated total (data + param overhead): ~44.58 GB
+Available RAM: ~70.95 GB
+
+
 # Downstream usage with Transformer: (suggested by GPT 5 mini)
 - Option A (recommended): Train AE → freeze encoder. Train Transformer to take 
 encoder(x_baseline) plus a perturbation token/embedding (e.g., one-hot gene 
@@ -115,3 +126,5 @@ return -(log_prob).mean()
 Summary: 900–1000 is not inherently bad — it's the average negative log-likelihood 
 per cell summed over ~3k genes. Convert to per-gene or compare against baselines and 
 training trends to judge performance.
+
+

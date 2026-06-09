@@ -52,6 +52,13 @@ try:
     import pkg_resources
 except ImportError:
     pkg_resources = None
+try:
+    import psutil
+except Exception:
+    psutil = None
+
+# Fraction of available RAM considered safe to use (e.g. 0.75 = 75%)
+MEMORY_SAFETY_FRACTION = 0.75
 
 # Configure device for PyTorch. For this workflow, CPU is the stable default.
 use_mps = False
@@ -64,7 +71,22 @@ else:
     print(f"Using device: {mps_device}")
 
 # TODO: Read the .h5ad file using Scanpy
-file_path = "/Users/nike/Documents/Uni/Master/dieVirtuelleZelle/VCC/test/Nike/pbmc_data/Suco_PBMC_1.3/PBMC-X-BRCA-X-scRNAseq-X-2021-X-Zhang-X-10.1016_j.ccell.2021.09.010.h5ad"
+file_path = "/Users/nike/Documents/Uni/Master/dieVirtuelleZelle/VCC/test/Nike/pbmc_data/Suco_PBMC_1.3/PBMC-X-HealthyAging-X-scRNAseq-X-2023-X-Terekhova-X-10.1016_j.immuni.2023.10.013.h5ad"
+# minimal safety checks before heavy model construction and dense conversions
+
+def _available_memory_bytes():
+    if psutil is None:
+        return None
+    return psutil.virtual_memory().available
+
+def _human_bytes(n):
+    for unit in ['B','KB','MB','GB','TB']:
+        if abs(n) < 1024.0:
+            return f"{n:3.1f}{unit}"
+        n /= 1024.0
+    return f"{n:.1f}PB"
+
+# Read the AnnData file. For very large files prefer backed mode `sc.read_h5ad(..., backed='r')`.
 adata = sc.read_h5ad(file_path)
 
 # Make sure to reset the core matrix to raw counts
@@ -81,7 +103,7 @@ else:
     # Use the current adata instead
     adata = adata.copy()  
 # Subset the Anndata object to the top 3000 highly variable genes
-# sc.pp.highly_variable_genes(adata_full, n_top_genes=3000, flavor="seurat_v3", subset=True, inplace=True)
+sc.pp.highly_variable_genes(adata, n_top_genes=5000, flavor="seurat_v3", subset=True, inplace=True)
 # adata = adata_full  # now adata.X contains counts for the HVGs
 
 # Keep raw counts in X for negative binomial training and avoid log1p transformations
@@ -184,45 +206,153 @@ train_adata = adata[train_idx].copy()
 val_adata = adata[val_idx].copy()
 test_adata = adata[test_idx].copy()
 
+# Recommended batch sizes for scRNA-seq (adjust if you have more/less RAM)
+# Use smaller batches to reduce memory pressure on large datasets.
 batch_size = 128
 test_batch_size = 256
+# Save model checkpoints every `checkpoint_freq` epochs
+checkpoint_freq = 10
 train_loader = AnnLoader(train_adata, batch_size=batch_size, shuffle=True)
 val_loader = AnnLoader(val_adata, batch_size=test_batch_size, shuffle=False)
 test_loader = AnnLoader(test_adata, batch_size=test_batch_size, shuffle=False)
 
 # Define the full single-cell autoencoder model.
 cdims = adata.shape[-1]
-latent_dim = 32
+# latent dimensionality (tunable)
+latent_dim = 256
+
+
+def _estimate_and_check_memory(adata, file_path, latent_dim=32, safety_fraction=MEMORY_SAFETY_FRACTION):
+    avail = _available_memory_bytes()
+    n_cells, n_genes = int(adata.n_obs), int(adata.n_vars)
+    # Estimate dense data bytes (float32)
+    try:
+        if getattr(adata.X, 'nnz', None) is not None:
+            nnz = int(adata.X.nnz)
+            dense_data_bytes = n_cells * n_genes * 4
+            sparse_data_bytes = nnz * 8
+            data_repr = 'sparse'
+        else:
+            dense_data_bytes = n_cells * n_genes * 4
+            sparse_data_bytes = None
+            data_repr = 'dense'
+    except Exception:
+        dense_data_bytes = n_cells * n_genes * 4
+        sparse_data_bytes = None
+        data_repr = 'unknown'
+
+    # Roughly estimate model parameter bytes for the defined architecture
+    # Use the architecture widths that mirror the encoder/decoder definitions below.
+    arch_down = [16384, 8192, 4096, 2048, 1024, 512]
+    arch_up = arch_down[::-1]
+    layer_sizes = [n_genes] + arch_down + [latent_dim] + arch_up + [n_genes]
+    param_count = 0
+    # pairwise linear layers (weight only) + biases
+    pairs = [(layer_sizes[i], layer_sizes[i+1]) for i in range(len(layer_sizes)-1)]
+    for inp, out in pairs:
+        param_count += inp * out + out
+    # assume float32 params
+    param_bytes = param_count * 4
+
+    # optimizer states (Adam ~ 2x params) + some overhead
+    estimate_total = dense_data_bytes + param_bytes * 3
+
+    report = {
+        'file_size_bytes': os.path.getsize(file_path) if os.path.exists(file_path) else None,
+        'n_cells': n_cells,
+        'n_genes': n_genes,
+        'data_representation': data_repr,
+        'dense_data_bytes': dense_data_bytes,
+        'sparse_data_bytes': sparse_data_bytes,
+        'param_count': int(param_count),
+        'param_bytes': int(param_bytes),
+        'estimated_total_bytes': int(estimate_total),
+        'available_memory_bytes': avail,
+    }
+
+    # Save small diagnostics next to the script (if writable)
+    try:
+        diag_path = Path(__file__).parent / 'memory_diagnostics.json'
+        with diag_path.open('w', encoding='utf-8') as fh:
+            json.dump(report, fh, indent=2)
+    except Exception:
+        pass
+
+    if avail is not None:
+        if estimate_total > avail * safety_fraction:
+            msg = (
+                f"Estimated memory need { _human_bytes(estimate_total) } exceeds "
+                f"{int(safety_fraction*100)}% of available RAM {_human_bytes(avail)}.\n"
+                "Aborting to avoid OOM. Options:\n"
+                " - Use a smaller gene set (HVG selection) before training.\n"
+                " - Use `sc.read_h5ad(..., backed='r')` and on-disk processing.\n"
+                " - Reduce model size (fewer hidden units / smaller latent_dim).\n"
+                " - Train on a machine with more RAM.\n"
+            )
+            raise MemoryError(msg)
+
+    return report
+
+# Run memory checks and possibly abort early with a helpful message
+try:
+    _estimate_and_check_memory(adata, file_path, latent_dim=latent_dim)
+except MemoryError as e:
+    print("Memory check failed:\n", e)
+    # Write a short failure note to the current directory and exit cleanly
+    try:
+        fail_note = Path(__file__).parent / 'memory_check_failed.txt'
+        fail_note.write_text(str(e))
+    except Exception:
+        pass
+    sys.exit(1)
 
 # TODO: Define the SCAutoEncoder model architecture with negative binomial likelihood and global dispersion parameter.  
 class SCAutoEncoder(nn.Module):
     def __init__(self):
         super(SCAutoEncoder, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Linear(cdims, 512),
-            nn.LayerNorm(512),
+            nn.Linear(cdims, 16384),
+            nn.LayerNorm(16384),
             nn.LeakyReLU(0.2),
             nn.Dropout(0.1),
-            nn.Linear(512, 256),
-            nn.LayerNorm(256),
+            nn.Linear(16384, 8192),
+            nn.LayerNorm(8192),
             nn.LeakyReLU(0.2),
-            nn.Dropout(0.1), 
-            nn.Linear(256, 128), 
-            nn.LayerNorm(128), 
+            nn.Dropout(0.1),
+            nn.Linear(8192, 4096),
+            nn.LayerNorm(4096),
             nn.LeakyReLU(0.2),
-            nn.Linear(128, latent_dim)
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, 128),
-            nn.LayerNorm(128),
+            nn.Linear(4096, 2048),
+            nn.LayerNorm(2048),
             nn.LeakyReLU(0.2),
-            nn.Linear(128, 256),
-            nn.LayerNorm(256),
+            nn.Linear(2048, 1024),
+            nn.LayerNorm(1024),
             nn.LeakyReLU(0.2),
-            nn.Linear(256, 512),
+            nn.Linear(1024, 512),
             nn.LayerNorm(512),
             nn.LeakyReLU(0.2),
-            nn.Linear(512, cdims),
+            nn.Linear(512, latent_dim)
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, 512),
+            nn.LayerNorm(512),
+            nn.LeakyReLU(0.2),
+            nn.Linear(512, 1024),
+            nn.LayerNorm(1024),
+            nn.LeakyReLU(0.2),
+            nn.Linear(1024, 2048),
+            nn.LayerNorm(2048),
+            nn.LeakyReLU(0.2),
+            nn.Linear(2048, 4096),
+            nn.LayerNorm(4096),
+            nn.LeakyReLU(0.2),
+            nn.Linear(4096, 8192),
+            nn.LayerNorm(8192),
+            nn.LeakyReLU(0.2),
+            nn.Linear(8192, 16384),
+            nn.LayerNorm(16384),
+            nn.LeakyReLU(0.2),
+            nn.Linear(16384, cdims),
             nn.Softplus()
         )
         self.dispersion_param = nn.Parameter(torch.full((cdims,), 0.5))
@@ -283,7 +413,18 @@ def evaluate_loader(loader):
     with torch.no_grad():
         for batch in loader:
             pbatch = batch.X
-            if pbatch.is_sparse:
+            if getattr(pbatch, 'is_sparse', False):
+                try:
+                    rows, cols = pbatch.shape
+                    dense_bytes = int(rows) * int(cols) * 4
+                    avail = _available_memory_bytes()
+                    if avail is not None and dense_bytes > avail * MEMORY_SAFETY_FRACTION:
+                        raise MemoryError(
+                            f"Batch dense conversion would need {_human_bytes(dense_bytes)}, "
+                            f">50% of available RAM {_human_bytes(avail)}. Aborting to avoid OOM."
+                        )
+                except Exception:
+                    pass
                 pbatch = pbatch.to_dense()
             pbatch = pbatch.to(mps_device, dtype=torch.float32)
             reconstructed = model(pbatch)
@@ -300,19 +441,26 @@ training_metadata = {
     'experiment_id': experiment_id,
     'timestamp': datetime.datetime.now().isoformat(),
     'model_architecture': {
-        'encoder_layers': [cdims, 512, 256, latent_dim],
-        'decoder_layers': [latent_dim, 256, 512, cdims],
+        'encoder_layers': [cdims] + [m.out_features for m in model.encoder if isinstance(m, nn.Linear)],
+        'decoder_layers': [latent_dim] + [m.out_features for m in model.decoder if isinstance(m, nn.Linear)],
         'activation': 'LeakyReLU(0.2)',
         'dropout': 0.1,
         'output_activation': 'Softplus',
-        'latent_dim': latent_dim,
+        'latent_dim': int(latent_dim),
         'global_dispersion': True,
     },
     'hyperparameters': {
         'learning_rate': 1e-3,
         'weight_decay': 1e-8,
-        'batch_size': batch_size,
-        'epochs': 20,
+        'batch_size': int(batch_size),
+        'test_batch_size': int(test_batch_size),
+        'epochs': 200,
+        'checkpoint_frequency': int(checkpoint_freq),
+        'early_stopping': {
+            'enabled': True,
+            'patience': 15,
+            'min_delta': 1e-4,
+        },
         'loss_type': 'negative_binomial',
         'dispersion_scheme': 'gene-wise global dispersion',
     },
@@ -398,6 +546,13 @@ epochs = 50
 train_history = []
 val_history = []
 epoch_times = []
+# Early stopping configuration: stop if validation loss doesn't improve
+# for `early_stopping_patience` epochs by at least `early_stopping_min_delta`.
+early_stopping_enabled = True
+early_stopping_patience = 15
+early_stopping_min_delta = 1e-4
+best_val = float('inf')
+epochs_no_improve = 0
 
 for epoch in range(epochs):
     epoch_start = time.time()
@@ -405,7 +560,18 @@ for epoch in range(epochs):
     batch_losses = []
     for batch in train_loader:
         pbatch = batch.X
-        if pbatch.is_sparse:
+        if getattr(pbatch, 'is_sparse', False):
+            try:
+                rows, cols = pbatch.shape
+                dense_bytes = int(rows) * int(cols) * 4
+                avail = _available_memory_bytes()
+                if avail is not None and dense_bytes > avail * MEMORY_SAFETY_FRACTION:
+                    raise MemoryError(
+                        f"Batch dense conversion would need {_human_bytes(dense_bytes)}, "
+                        f">50% of available RAM {_human_bytes(avail)}. Aborting to avoid OOM."
+                    )
+            except Exception:
+                pass
             pbatch = pbatch.to_dense()
         pbatch = pbatch.to(mps_device, dtype=torch.float32)
         reconstructed = model(pbatch)
@@ -422,16 +588,35 @@ for epoch in range(epochs):
     train_history.append(train_loss)
     val_history.append(val_loss)
 
-    torch.save(model.state_dict(), experiment_dir / f'model_epoch{epoch+1}.pt')
-    torch.save(optimizer.state_dict(), experiment_dir / f'optim_epoch{epoch+1}.pt')
-    save_rng_state(experiment_dir / f'rng_state_epoch{epoch+1}.pt')
-    if scheduler is not None:
-        torch.save(scheduler.state_dict(), experiment_dir / f'scheduler_epoch{epoch+1}.pt')
+    # Early stopping: save best model and stop if no improvement for patience epochs
+    if early_stopping_enabled:
+        if val_loss < best_val - early_stopping_min_delta:
+            best_val = val_loss
+            epochs_no_improve = 0
+            # save best model snapshot
+            torch.save(model.state_dict(), experiment_dir / 'model_best.pt')
+            torch.save(optimizer.state_dict(), experiment_dir / 'optim_best.pt')
+            save_rng_state(experiment_dir / 'rng_state_best.pt')
+        else:
+            epochs_no_improve += 1
+
+        if epochs_no_improve >= early_stopping_patience:
+            print(f"Early stopping: validation loss did not improve for {epochs_no_improve} epochs. Stopping training.")
+            break
+
+    # Save checkpoints only at the configured frequency to reduce I/O and disk usage.
+    if (epoch + 1) % checkpoint_freq == 0:
+        torch.save(model.state_dict(), experiment_dir / f'model_epoch{epoch+1}.pt')
+        torch.save(optimizer.state_dict(), experiment_dir / f'optim_epoch{epoch+1}.pt')
+        save_rng_state(experiment_dir / f'rng_state_epoch{epoch+1}.pt')
+        if scheduler is not None:
+            torch.save(scheduler.state_dict(), experiment_dir / f'scheduler_epoch{epoch+1}.pt')
 
     print(f'Epoch {epoch+1}/{epochs} | train_loss: {train_loss:.6f} | val_loss: {val_loss:.6f} | time: {epoch_times[-1]:.2f}s')
 
-# Save training curves.
-train_curve = pd.DataFrame({'epoch': np.arange(1, epochs + 1), 'train_loss': train_history, 'val_loss': val_history, 'epoch_time_s': epoch_times})
+# Save training curves using the actual number of epochs run.
+num_epochs_run = len(train_history)
+train_curve = pd.DataFrame({'epoch': np.arange(1, num_epochs_run + 1), 'train_loss': train_history, 'val_loss': val_history, 'epoch_time_s': epoch_times})
 train_curve.to_csv(experiment_dir / 'training_history.csv', index=False)
 
 plt.figure(figsize=(8, 5))
@@ -457,7 +642,18 @@ full_latents = None
 with torch.no_grad():
     for batch in full_loader:
         pbatch = batch.X
-        if pbatch.is_sparse:
+        if getattr(pbatch, 'is_sparse', False):
+            try:
+                rows, cols = pbatch.shape
+                dense_bytes = int(rows) * int(cols) * 4
+                avail = _available_memory_bytes()
+                if avail is not None and dense_bytes > avail * MEMORY_SAFETY_FRACTION:
+                    raise MemoryError(
+                        f"Full-dataset dense conversion would need {_human_bytes(dense_bytes)}, "
+                        f">50% of available RAM {_human_bytes(avail)}. Aborting to avoid OOM."
+                    )
+            except Exception:
+                pass
             pbatch = pbatch.to_dense()
         full_counts = pbatch.to(mps_device, dtype=torch.float32)
         full_latents = model.encoder(full_counts)
