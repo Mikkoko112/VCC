@@ -18,6 +18,13 @@ supervision to improve the accuracy -> if we have lots of labeled perturbation p
     -> not yet done
 
 # Autoencoder for scRNA data:
+For your autoencoder use case
+Preprocessed data is actually fine — even preferred in many cases — because:
+
+Autoencoders work with normalized/log-transformed data better than raw counts. Log transformation stabilizes variance and makes the distribution more normal, which helps gradient-based learning.
+Your goal is gene perturbation representations, not absolute counts. You need meaningful embeddings of cell states, not raw UMI counts.
+If batch correction was applied, that's good — it removes technical noise.
+
 bottleneck size: 
 - not 2, because we have approx. 3k genes and it will compress TOO much
 - typical scRNA latent dims: 10-50 (look up paper -> see Mohamad Kassab et al., 2026)
@@ -34,7 +41,8 @@ bottleneck size:
 layers:
 - to stabilize use layer normalization between Linear and Activation functions 
 - avoid dead neurons so use ELU or LeakyReLU
-- use dropout (p=0.1-0.3) for encoder/decoder for robustness
+(- use dropout (p=0.1-0.3) for encoder/decoder for robustness )
+=> Removed unnecessary Dropout — good call; LayerNorm is sufficient for regularization on this task
     -> all three things done in autoencoder.py
 
 decoder:
@@ -128,3 +136,130 @@ per cell summed over ~3k genes. Convert to per-gene or compare against baselines
 training trends to judge performance.
 
 
+Why sum_genes_mean_batch wins for scRNA-seq
+Gene expression is highly skewed — a few genes (ribosomal, housekeeping) have counts in thousands; most are sparse with 0–10 counts. Global mean would let high-count genes overwhelm the loss signal.
+Cell-level modeling makes sense — you want the model to reconstruct each cell's expression profile well, not optimize for the largest numbers. Summing per-cell naturally treats each cell as an independent unit.
+Matches biological intuition — a cell is the unit of observation; all ~5k genes are attributes of that cell. Averaging across cells respects this hierarchy.
+Standard in the literature — scVI, NBVAE, and other tools use the per-cell-sum approach for exactly this reason.
+
+
+
+
+
+############
+
+'''
+# Final evaluation on full train/validation/test sets.
+final_test_loss = evaluate_loader(test_loader)
+final_train_loss = evaluate_loader(train_loader)
+final_val_loss = evaluate_loader(val_loader)
+
+# Compute full dataset embeddings and metrics.
+full_loader = AnnLoader(adata, batch_size=adata.n_obs, shuffle=False)
+full_counts = None
+full_reconstruction = None
+full_latents = None
+with torch.no_grad():
+    for batch in full_loader:
+        pbatch = batch.X
+        if getattr(pbatch, 'is_sparse', False):
+            try:
+                rows, cols = pbatch.shape
+                dense_bytes = int(rows) * int(cols) * 4
+                avail = _available_memory_bytes()
+                if avail is not None and dense_bytes > avail * MEMORY_SAFETY_FRACTION:
+                    raise MemoryError(
+                        f"Full-dataset dense conversion would need {_human_bytes(dense_bytes)}, "
+                        f">50% of available RAM {_human_bytes(avail)}. Aborting to avoid OOM."
+                    )
+            except Exception:
+                pass
+            pbatch = pbatch.to_dense()
+        full_counts = pbatch.to(mps_device, dtype=torch.float32)
+        full_latents = model.encoder(full_counts)
+        full_reconstruction = model.decoder(full_latents)
+        break
+
+dispersion = model.get_dispersion()
+full_log_prob = negative_binomial_log_prob(full_counts, full_reconstruction, dispersion)
+full_nll = -full_log_prob.sum(dim=1)
+final_avg_nll = float(full_nll.mean().item())
+
+mse = torch.mean((full_reconstruction - full_counts) ** 2).item()
+mae = torch.mean(torch.abs(full_reconstruction - full_counts)).item()
+rmse = float(torch.sqrt(torch.mean((full_reconstruction - full_counts) ** 2)).item())
+full_deviance = negative_binomial_deviance(full_counts, full_reconstruction, dispersion)
+nb_deviance = float(full_deviance.mean().item())
+
+per_gene_mse = torch.mean((full_reconstruction - full_counts) ** 2, dim=0).cpu().numpy()
+per_gene_mae = torch.mean(torch.abs(full_reconstruction - full_counts), dim=0).cpu().numpy()
+per_gene_nb_deviance = full_deviance.sum(dim=0).detach().cpu().numpy()
+
+pd.DataFrame({
+    'gene': adata.var_names,
+    'mse': per_gene_mse,
+    'mae': per_gene_mae,
+    'nb_deviance': per_gene_nb_deviance,
+}).to_csv(experiment_dir / 'per_gene_metrics.csv', index=False)
+
+# Save latent embeddings for train/validation/test splits.
+np.savez(
+    experiment_dir / 'latent_embeddings.npz',
+    train=full_latents[train_idx].cpu().numpy(),
+    validation=full_latents[val_idx].cpu().numpy(),
+    test=full_latents[test_idx].cpu().numpy(),
+    cell_ids=np.array(adata.obs_names),
+)
+
+metrics = {
+    'final_train_loss': final_train_loss,
+    'final_validation_loss': final_val_loss,
+    'final_test_loss': final_test_loss,
+    'final_avg_negative_log_likelihood': final_avg_nll,
+    'mse': mse,
+    'mae': mae,
+    'rmse': rmse,
+    'nb_deviance': nb_deviance,
+    'num_cells': int(n_cells),
+    'num_genes': int(cdims),
+}
+save_json(experiment_dir / 'final_metrics.json', metrics)
+
+system_info = {
+    'python_version': platform.python_version(),
+    'sys_executable': sys.executable,
+    'platform': platform.platform(),
+    'cpu': platform.processor(),
+    'device': str(mps_device),
+    'cuda_available': torch.cuda.is_available(),
+    'cuda_version': torch.version.cuda,
+    'cudnn_version': torch.backends.cudnn.version(),
+}
+save_json(experiment_dir / 'system_info.json', system_info)
+
+archive_path = shutil.make_archive(str(experiment_dir), 'gztar', root_dir=experiment_dir.parent, base_dir=experiment_dir.name)
+archive_checksum = compute_sha256(archive_path)
+save_json(experiment_dir / 'archive_checksum.json', {'archive_path': str(archive_path), 'sha256': archive_checksum})
+
+print(f'Experiment saved to {experiment_dir}')
+print(f'Archive created at {archive_path}')
+
+
+
+
+
+for Transformer:
+
+# Load embeddings
+data = np.load('latent_embeddings.npz')
+train_latents = torch.from_numpy(data['train_latents']).float()
+train_indices = data['train_indices']
+cell_ids = data['cell_ids']
+
+# Load original adata to get perturbations
+adata = sc.read_h5ad('your_data.h5ad', backed='r')
+train_perturbs = adata.obs['perturbation'].iloc[train_indices].values
+
+# Create Transformer dataset
+dataset = PerturbationDataset(train_latents, train_perturbs)
+'''
