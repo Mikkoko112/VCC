@@ -81,14 +81,15 @@ experiment_name = f"experiment_{experiment_date}_{timestamp}_{experiment_id}"
 
 # TODO: put here the directory where you want to save the experiment results, 
 # e.g. "/path/to/experiments"
-experiment_dir = Path(__file__).parent / "experiments" / experiment_name
+experiment_dir = f"/beegfs/$USER/autoencoder_runs/run1/{experiment_name}"
+#experiment_dir = Path(__file__).parent / "experiments" / experiment_name
 
 experiment_dir.mkdir(parents=True, exist_ok=False)
 plot_dir = experiment_dir / "figures"
 plot_dir.mkdir(parents=True, exist_ok=True)
 
 # TODO: Read the .h5ad file using Scanpy
-file_path = "/Users/nike/Documents/Uni/Master/dieVirtuelleZelle/VCC/test/Nike/pbmc_data/Suco_PBMC_1.3/PBMC-X-HealthyAging-X-scRNAseq-X-2023-X-Terekhova-X-10.1016_j.immuni.2023.10.013.h5ad"
+file_path = "/beegfs/g/kern/bbb7169/vcc_data/PBMC-X-HealthyAging-X-scRNAseq-X-2023-X-Terekhova-X-10.1016_j.immuni.2023.10.013.h5ad"
 
 # Read the AnnData file. For very large files prefer backed mode 
 # `sc.read_h5ad(..., backed='r')`.
@@ -687,7 +688,7 @@ with open(experiment_dir / 'README.txt', 'w', encoding='utf-8') as handle:
 
 # TODO: Implement the training loop for the SCAutoEncoder model, including saving 
 # model checkpoints, training curves, and final evaluation metrics on the test set.
-epochs = 50
+epochs = 1
 train_history = []
 val_history = []
 epoch_times = []

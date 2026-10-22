@@ -37,6 +37,7 @@ dependencies:
       - pandas==2.3.3
       - patsy==1.0.2
       - pillow==12.1.1
+      - plotly==7.1.0
       - pynndescent==0.6.0
       - pyparsing==3.3.2
       - python-dateutil==2.9.0.post0
